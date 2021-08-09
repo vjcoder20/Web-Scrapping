@@ -1,48 +1,95 @@
 let request = require("request");
 let cheerio = require("cheerio");
 let fs = require("fs");
+let path = require("path");
+
 function processSinglematch(url) {
 
     request(url, cb);
 }
-function cb(error,response,html){
-    if(error){
-        console.log(error);
-    }
 
-    else if (response.statusCode==404) {
-        console.log("Page Not Found");
-    }
+function cb(err,response,html){
+    if(err){
+        console.log(err);
+    }else if(response.statusCode == 404){
+        console.log("page not found");
+    }else{
+        // console.log(html);
+        // console.log("html",);
 
-    else{
-    dataExtractor(html);
+        dataExtractor(html);
     }
 }
- function dataExtractor(html){
-     let scoreCard = "";
-     let searchTool = cheerio.load(html);
-     let bothInningArr = searchTool(".Collapsible");
-     for (let i = 0; i < bothInningArr.length; i++) {
-        scoreCard = searchTool(bothInningArr[i]).html();
-        let teamNameElem = searchTool(bothInningArr[i]).find("h5");
-        let teamName = teamNameElem.text();
-        teamName = teamName.split("INNINGS")[0];
-        teamName = teamName.trim();
-        console.log(teamName);
-        let batsManTableBodyAllRows = searchTool(bothInningArr[i]).find(".table.batsman tbody tr");
-        for (let j = 0; j < batsManTableBodyAllRows.length; j++) {
-            let numberofTds = searchTool(batsManTableBodyAllRows[j]).find("td");
-            if (numberofTds.length == 8) {
-                // console.log("You are valid")
-                let playerName = searchTool(numberofTds[0]).text();
-                console.log(playerName);
+function dataExtractor(html){
+    let searchTool = cheerio.load(html);
+    let infoElem = searchTool(".event .match-info.match-info-MATCH .description");
+    let matchInfo = infoElem.text().split(",");
+    let venue = matchInfo[1].trim();
+    let date = matchInfo[2].trim();
+    // console.log(venue +" -- "+ date);
+    let resultInfo = searchTool(".event .match-info.match-info-MATCH .status-text");
+    let result = resultInfo.text().trim();
+    // console.log(result);
+    //1.team name
+    let nameOfTeam = searchTool(".Collapsible h5");
+    let batsmanTable = searchTool(".Collapsible .table.batsman");
+    for(let i = 0; i < nameOfTeam.length; i++){
+        let allRows = searchTool(batsmanTable[i]).find("tbody tr");
+            //console.log(allRows);
+        for(let j = 0; j < allRows.length; j++){
+            let allCols = searchTool(allRows[j]).find("td");
+                // console.log(allCols);
+            if(allCols.length == 8){
+                let myTeam = searchTool(nameOfTeam[i]).text().split("INNINGS")[0].trim();
+                // console.log(myTeam);
+                myTeam = myTeam.trim();
+                let opponent = i == 0 ? searchTool(nameOfTeam[1]).text() : searchTool(nameOfTeam[0]).text();
+                opponent = opponent.split("INNINGS")[0].trim();
+                // console.log(opponent);
+                let name = searchTool(allCols[0]).text();
+                // console.log("NAME : " + name);
+                let run  = searchTool(allCols[2]).text();
+                let ball = searchTool(allCols[3]).text();
+                let fours = searchTool(allCols[5]).text();
+                let sixers = searchTool(allCols[6]).text();
+                let strikeRate = searchTool(allCols[7]).text();
+
+               
+              
+                teamFolder(myTeam,name,venue,date,opponent,result,run,ball,fours,sixers,strikeRate);
+
             }
         }
-        console.log("``````````````````````````````````````")
-     }
-     console.log("--------------------------------------");
-     }
-    
-     module.exports = {
-        processSinglematch
     }
+}
+
+
+
+function teamFolder(myTeam,name,venue,date,opponent,result,run,ball,fours,sixers,strikeRate) {
+    let teamFolderPath = path.join(__dirname,"ipl",myTeam);
+    isDirrectory(teamFolderPath);
+
+    let filePath = path.join(teamFolderPath,name+".json");
+    let content =[];
+    let matchObject = {
+        myTeam,name,venue,date,opponent,result,run,ball,fours,sixers,strikeRate
+    }
+    content.push(matchObject);
+    if(fs.existsSync(filePath)) {
+        let data = fs.readFileSync(filePath);
+        content = JSON.parse(data);
+    }
+    content.push(matchObject);
+    fs.writeFileSync(filePath, JSON.stringify(content));
+
+
+}
+function isDirrectory(teamFolderPath) {
+ if(fs.existsSync(teamFolderPath)== false){
+     fs.mkdirSync(teamFolderPath);
+ }
+}
+
+module.exports = {
+    psm : processSinglematch
+}
