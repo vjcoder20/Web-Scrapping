@@ -1,95 +1,121 @@
+let url = "https://www.espncricinfo.com/series/ipl-2020-21-1210595/mumbai-indians-vs-chennai-super-kings-1st-match-1216492/full-scorecard";
 let request = require("request");
 let cheerio = require("cheerio");
 let fs = require("fs");
 let path = require("path");
-
+let xlsx = require("xlsx");
 function processSinglematch(url) {
 
     request(url, cb);
 }
+function cb(error, response, html) {
 
-function cb(err,response,html){
-    if(err){
-        console.log(err);
-    }else if(response.statusCode == 404){
-        console.log("page not found");
-    }else{
-        // console.log(html);
-        // console.log("html",);
-
-        dataExtractor(html);
+    if (error) {
+        console.log(error); // Print the error if one occurred
+    } else if (response.statusCode == 404) {
+        console.log("Page Not Found")
+    }
+    else {
+        // console.log(html); // Print the HTML for the request made 
+        dataExtracter(html);
     }
 }
-function dataExtractor(html){
-    let searchTool = cheerio.load(html);
-    let infoElem = searchTool(".event .match-info.match-info-MATCH .description");
-    let matchInfo = infoElem.text().split(",");
-    let venue = matchInfo[1].trim();
-    let date = matchInfo[2].trim();
-    // console.log(venue +" -- "+ date);
-    let resultInfo = searchTool(".event .match-info.match-info-MATCH .status-text");
-    let result = resultInfo.text().trim();
-    // console.log(result);
-    //1.team name
-    let nameOfTeam = searchTool(".Collapsible h5");
-    let batsmanTable = searchTool(".Collapsible .table.batsman");
-    for(let i = 0; i < nameOfTeam.length; i++){
-        let allRows = searchTool(batsmanTable[i]).find("tbody tr");
-            //console.log(allRows);
-        for(let j = 0; j < allRows.length; j++){
-            let allCols = searchTool(allRows[j]).find("td");
-                // console.log(allCols);
-            if(allCols.length == 8){
-                let myTeam = searchTool(nameOfTeam[i]).text().split("INNINGS")[0].trim();
-                // console.log(myTeam);
-                myTeam = myTeam.trim();
-                let opponent = i == 0 ? searchTool(nameOfTeam[1]).text() : searchTool(nameOfTeam[0]).text();
-                opponent = opponent.split("INNINGS")[0].trim();
-                // console.log(opponent);
-                let name = searchTool(allCols[0]).text();
-                // console.log("NAME : " + name);
-                let run  = searchTool(allCols[2]).text();
-                let ball = searchTool(allCols[3]).text();
-                let fours = searchTool(allCols[5]).text();
-                let sixers = searchTool(allCols[6]).text();
-                let strikeRate = searchTool(allCols[7]).text();
-
-               
-              
-                teamFolder(myTeam,name,venue,date,opponent,result,run,ball,fours,sixers,strikeRate);
-
+function dataExtracter(html) {
+    let searchTool = cheerio.load(html)
+    // team name
+    let bothInningArr = searchTool(".Collapsible");
+    for (let i = 0; i < bothInningArr.length; i++) {
+        // scoreCard = searchTool(bothInningArr[i]).html();
+        let teamNameElem = searchTool(bothInningArr[i]).find("h5");
+        let teamName = teamNameElem.text();
+        // console.log(teamName);
+        teamName = teamName.split("INNINGS")[0];
+        // console.log(teamName);
+        teamName = teamName.trim();
+        // console.log(teamName);
+        let batsManTableBodyAllRows = searchTool(bothInningArr[i]).find(".table.batsman tbody tr");
+        console.log(batsManTableBodyAllRows.length)
+        // type cohersion loops -> 
+        for (let j = 0; j < batsManTableBodyAllRows.length; j++) {
+            let numberofTds = searchTool(batsManTableBodyAllRows[j]).find("td");
+            // console.log(numberofTds.length);
+            if (numberofTds.length == 8) {
+                // console.log("You are valid")
+                let playerName = searchTool(numberofTds[0]).text();
+                let runs = searchTool(numberofTds[2]).text();
+                let balls = searchTool(numberofTds[3]).text();
+                let fours = searchTool(numberofTds[5]).text();
+                let sixes = searchTool(numberofTds[6]).text();
+                // myTeamName	name	venue	date opponentTeamName	result	runs	balls	fours	sixes	sr
+                console.log(playerName, "played for", teamName, "scored", runs, "in", balls, "with ", fours, "fours and ", sixes, "sixes");
+                processPlayer(playerName, teamName, runs, balls, fours, sixes);
             }
         }
+        console.log("``````````````````````````````````````")
+        // fs.writeFileSync(`innning${i+1}.html`,scoreCard);
     }
+    // players name
 }
-
-
-
-function teamFolder(myTeam,name,venue,date,opponent,result,run,ball,fours,sixers,strikeRate) {
-    let teamFolderPath = path.join(__dirname,"ipl",myTeam);
-    isDirrectory(teamFolderPath);
-
-    let filePath = path.join(teamFolderPath,name+".json");
-    let content =[];
-    let matchObject = {
-        myTeam,name,venue,date,opponent,result,run,ball,fours,sixers,strikeRate
+function processPlayer(playerName, teamName, runs, balls, fours, sixes) {
+    let obj = {
+        playerName,
+        teamName,
+        runs,
+        balls,
+        fours,
+        sixes
     }
-    content.push(matchObject);
-    if(fs.existsSync(filePath)) {
-        let data = fs.readFileSync(filePath);
-        content = JSON.parse(data);
+    let dirPath = path.join(__dirname,teamName);
+    //    folder 
+    if (fs.existsSync(dirPath) == false) {
+        fs.mkdirSync(dirPath)
     }
-    content.push(matchObject);
-    fs.writeFileSync(filePath, JSON.stringify(content));
-
-
+    // playerfile 
+    let playerFilePath = path.join(dirPath, playerName + ".xlsx");
+    let playerArray = [];
+    if (fs.existsSync(playerFilePath) == false) {
+        playerArray.push(obj);
+    } else {
+        // append
+        playerArray = excelReader(playerFilePath, playerName);
+        playerArray.push(obj);
+    }
+    // write in the files
+    // writeContent(playerFilePath, playerArray);
+    excelWriter(playerFilePath, playerArray, playerName);
 }
-function isDirrectory(teamFolderPath) {
- if(fs.existsSync(teamFolderPath)== false){
-     fs.mkdirSync(teamFolderPath);
- }
+// function getContent(playerFilePath) {
+//     let content = fs.readFileSync(playerFilePath);
+//     return JSON.parse(content);
+// }
+function writeContent(playerFilePath, content) {
+    let jsonData = JSON.stringify(content)
+    fs.writeFileSync(playerFilePath, jsonData);
 }
-
 module.exports = {
-    psm : processSinglematch
+    processSinglematch
+}
+
+function excelWriter(filePath, json, sheetName) {
+    // workbook create
+    let newWB = xlsx.utils.book_new();
+    // worksheet
+    let newWS = xlsx.utils.json_to_sheet(json);
+    xlsx.utils.book_append_sheet(newWB, newWS, sheetName);
+    // excel file create 
+    xlsx.writeFile(newWB, filePath);
+}
+// // json data -> excel format convert
+// // -> newwb , ws , sheet name
+// // filePath
+// read 
+//  workbook get
+function excelReader(filePath, sheetName) {
+    // player workbook
+    let wb = xlsx.readFile(filePath);
+    // get data from a particular sheet in that wb
+    let excelData = wb.Sheets[sheetName];
+    // sheet to json 
+    let ans = xlsx.utils.sheet_to_json(excelData);
+    return ans;
 }
